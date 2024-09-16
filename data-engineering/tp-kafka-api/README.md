@@ -42,7 +42,11 @@ Using Kafka UI on http://localhost:8080/, connect to **your existing docker kafk
 
 Questions:
 * [ ] When should we use a key when producing a message into Kafka ? What are the risks ? [Help](https://stackoverflow.com/a/61912094/3535853)
+
+Keys should be used to produce messages when we need to ensure that messages with the same key are processed sequentially. Because Kafka guarantees that messages are ordered within each partition, messages with the same key will be routed to the same partition, which ensures that they are processed sequentially. The risk may be that the partitions are not balanced, and if the distribution of keys is not balanced, this can lead to a larger load on some partitions, which can lead to performance issues.
 * [ ] How does the default partitioner (sticky partition) work with kafka ? [Help1](https://www.confluent.io/fr-fr/blog/apache-kafka-producer-improvements-sticky-partitioner/) and [Help2](https://www.conduktor.io/kafka/producer-default-partitioner-and-sticky-partitioner#Sticky-Partitioner-(Kafka-%E2%89%A5-2.4)-3)
+
+When there is no key: By default, Sticky Partitioner sends a batch of messages to the same partition. This partition is randomized and switches to the next partition after all messages in the batch have been sent to this partition.
 
 ### Coding our own Kafka Client using Scala
 Instead of using the command line interface (CLI) or Kafka UI to produce and consume, we are going to code our first app like pros.
@@ -54,6 +58,10 @@ First, Using the `scala/com.github.polomarcus/utis/KafkaProducerService`, send m
 
 Questions :
 * What are serializers and deserializers ? What is the one used here ? And why use them ?
+
+Serializer: Convert in-memory objects to byte arrays.
+Deserializer: converts a byte array back to an in-memory object.
+We are using Deserializer here, we are using them in order to reach the data conversion, as well as to ensure the consistency of the data.
 
 #### To run your program with SBT or Docker
 There are 3 ways to run your program :
@@ -79,28 +87,54 @@ INFO  c.g.p.utils.KafkaProducerService$ -
 Your ops team tells your app is slow and the CPU is not used much, they were hoping to help you but they are not Kafka experts.
 
 * [ ] Look at the method `producer.flush()` inside KafkaProducerService (Right click on "tp-kafka-api" and "Find in files" to look for it), can you improve the speed of the program ? 
+
+Yes, by reducing the frequency of producer.flush() usage.
+
 * [ ] What about batching the messages ? [Help](https://www.conduktor.io/kafka/kafka-producer-batching). Can this help your app performance ?
+
+Yes, batch processing of messages reduces the number of requests (reducing network overhead), optimizes disk reads and writes, and reduces latency.
 
 ##### Question 2
 Your friendly ops team warns you about kafka disks starting to be full. What can you do ?
 
 Tips : 
 * [ ] What about [messages compression](https://kafka.apache.org/documentation/#producerconfigs_compression.type) ? Can you implement it ? [You heard that snappy compression is great.](https://learn.conduktor.io/kafka/kafka-message-compression/)
+
+yes,  props.setProperty(ProducerConfig.COMPRESSION_TYPE_CONFIG, "snappy");
+Snappy compression provides a good balance between compression ratio and speed. It compresses data efficiently while maintaining reasonable performance.
+
 * [ ] What are the downside of compression ?
+
+Increased CPU usage, increased complexity of the data processing pipeline, and latency due to compressed and decompressed messages.
+
 * [ ] What about [messages lifetime](https://kafka.apache.org/documentation/#topicconfigs_delete.retention.ms) on your kafka brokers ? Can you change your topic config ?
+
+
+
 * [ ] What are the downside of increasing your messages lifetime ?
+
+Increasing disk usage and retaining data for longer periods of time also increases the complexity of managing and querying data, which can impact performance.
 
 ##### Question 3
 After a while and a lot of deployments and autoscaling (adding and removing due to traffic spikes), on your data quality dashboard you are seeing some messages are duplicated or missing. What can you do ?
 
+Verify that acks = all, check that idempotence is configured with enable.idempotence=true
+
 * [ ] What are ["acks"](https://kafka.apache.org/documentation/#producerconfigs_acks) ? when to use acks=0 ? when to use acks=all?
+acks=0: The producer does not wait for any acknowledgement messages. In this case, the message is sent as soon as possible, but there is a risk of losing data.
+acks=1: The producer waits for an acknowledgement from the Leader copy. If the Leader copy successfully receives the message but does not have time to copy it to the other copies, the message may be lost.
+acks=all: the producer waits for an acknowledgement from all in-sync replicas, in which case the data is more secure because all replicas have received the message.
 * [ ] Can [idempotence](https://kafka.apache.org/documentation/#producerconfigs_enable.idempotence) help us ?
+Yes, Idempotency allows the producer to ensure that the same message is not written to Kafka repeatedly.By setting ENABLE_IDEMPOTENCE_CONFIG=true, the Kafka producer can avoid sending duplicate messages in possible retry scenarios, ensuring that the message will only be written once.
+
 * [ ] what is ["min.insync.replicas"](https://kafka.apache.org/documentation/#brokerconfigs_min.insync.replicas) ?
+min.insync.replicas is an important parameter used in conjunction with acks=all. It defines the minimum number of replicas that a message is considered to have been successfully written. If there are fewer synchronized copies available than this value, the producer will not be able to write data.
+
 
 #### Consumer - the service in charge of reading messages
 The goal is to read messages from our producer thanks to the ["KafkaConsumerService" class](https://github.com/polomarcus/tp/blob/main/data-engineering/tp-kafka-api/src/main/scala/com/github/polomarcus/utils/KafkaConsumerService.scala#L34-L35).
 
-To run your program (if you don't change anything there will be a `an implementation is missing` error, **that's normal.**
+To run your program if you don't change anything there will be a `an implementation is missing` error, **that's normal.**
 ```bash
 sbt "runMain com.github.polomarcus.main.MainKafkaConsumer"
 > scala.NotImplementedError: an implementation is missing --> modify the `utils/KafkaConsumerService` class
@@ -123,14 +157,29 @@ Now, resend messages to kafka thanks to `runMain com.github.polomarcus.main.Main
 
 What are we noticing ? Can we change a configuration to not read again the same data always and always ? Modify it inside our KafkaConsumerService.
 
+There are duplicate messages, we can avoid reading the same information by disabling auto-commit props.put(ConsumerConfig.ENABLE_AUTO_COMMIT_CONFIG, “false”)
+to avoid reading the same information.
+
+
 ##### Question 1
 * [ ] What happens if your consumer crash while processing data ?
 * What are the "at most once" / "at least once" / "exactly once" semantics ? [Help](https://www.conduktor.io/kafka/complete-kafka-consumer-with-java#Automatic-Offset-Committing-Strategy-1)
+
+At Most Once: A message may be delivered once or not at all. If a consumer crashes after receiving a message, but does not process the message before processing, the message will not be processed. This means that messages may be lost.
+At Least Once: Messages are guaranteed to be delivered at least once, but may be delivered multiple times. If a consumer crashes after processing a message, but before acknowledging it, Kafka will resend the message, which may result in the message being processed repeatedly.
+Exactly Once: Messages are guaranteed to be delivered and processed exactly once. Even if the consumer crashes or retries, Kafka and its clients ensure that each message is processed only once.
+
 * What should we use ?
+
+I think we should use at least once to prevent loss of information, because loss of information is unacceptable, but repeated processing is acceptable.
 
 ##### Question 2
 We have introduced a bug in our program, and we would like to replay some data. Can we use Kafka UI to help our consumer group? Should we create a new consumer group ?
 * [ ][Help](https://kafka.apache.org/documentation.html#basic_ops_consumer_group)
+
+With the ConsumerGroupCommand tool, we can replay the data by listing the consumer groups: $ bin/kafka-consumer-groups.sh --bootstrap-server localhost:9092 --list, describing the consumer groups: $ bin/ kafka-consumer-groups.sh --bootstrap-server localhost:9092 --describe --group my-group, after which you can reset the offset by adjusting the settings.
+So should we create a new consumer group? He has the advantage of bypassing bugs and not affecting the state of the current consumer group. So we can create a new consumer group with a specific offset.
+
 
 #### Schema Registry - to have more control on our messages
 ##### Intro
@@ -140,11 +189,24 @@ Look at :
 
 ##### Questions
 * [ ] What are the benefits to use a Schema Registry for messages ? [Help](https://docs.confluent.io/platform/current/schema-registry/index.html)
+
+Schema Registry provides a powerful way to manage data structure and evolution, ensure data consistency, improve data quality, and simplify data management and version control.
 * [ ] Where are stored schemas information ?
+
+Centralized storage in a separate sub-registry.
 * [ ] What is serialization ? [Help](https://developer.confluent.io/learn-kafka/kafka-streams/serialization/#serialization)
+
+Serialization is the process of converting data from an object in memory into a format that can be stored or transmitted. For Kafka, serialization is primarily used to convert messages into a byte stream format that can be sent to a Kafka topic.
+
 * [ ] What serialization format are supported ? [Help](https://docs.confluent.io/platform/current/schema-registry/index.html#avro-json-and-protobuf-supported-formats-and-extensibility)
+
+Serialization formats Avro, Protobuf, and JSON Schema (called JSON_SR) are supported out of the box by Schema Registry on Confluent Cloud and Confluent Platform.
 * [ ] Why is the Avro format so compact ? [Help](https://docs.confluent.io/platform/current/schema-registry/index.html#ak-serializers-and-deserializers-background)
+
+Avro's compactness comes from its use of binary formats, omission of field names using schema definitions, support for multiple compression algorithms, embedded schemas, and optimized data representation and encoding mechanisms.
 * [ ] What are the best practices to run a Schema Registry in production ? [Help1](https://docs.confluent.io/platform/current/schema-registry/index.html#sr-high-availability-single-primary) and [Help2](https://docs.confluent.io/platform/current/schema-registry/installation/deployment.html#running-sr-in-production)
+
+By deploying a highly available Schema Registry cluster, deploy multiple Schema Registry instances and configure them to form a cluster. This ensures that even if one instance fails, the others will continue to provide services.
 
 ##### Code
 
@@ -158,8 +220,13 @@ Look at :
 ##### Schema Evolution
 3. Add a new property to the class `News` inside the folder "src/main/scala/.../models" called `test: String` : it means a column "test" with type String
 4. What happens on your console log when sending messages again with `runMain com.github.polomarcus.main.MainKafkaAvroProducer`. Why ?
+
+Error appears, which may be caused by an incompatible Avro mode.
+
 5. Modify the class `News` from `test: Option[String] = None`
 6. Send another message and on Kafka UI Schema Registry tab, see what happens
+
+The message with test is passed to the KafkaUI.
 
 We've experienced a [schema evolution](https://docs.confluent.io/platform/current/schema-registry/avro.html#schema-evolution).
 
@@ -217,10 +284,25 @@ Look on Kafka UI to see if a Connector use a consumer group to bookmark partitio
 [Streams Developer Guide](https://docs.confluent.io/platform/current/streams/developer-guide/dsl-api.html#overview)
 
 * [ ] What are the differences between the consumer, the producer APIs, and Kafka streams ? [Help1](https://stackoverflow.com/a/44041420/3535853)
+
+Producer API: Responsible for writing data to Kafka topics, suitable for production data.
+Consumer API: Responsible for reading data from Kafka topics, suitable for consuming data.
+Kafka Streams: Provides stream processing capabilities, allowing real-time processing of streams and complex transformations.
+
 * [ ] When to use Kafka Streams instead of the consumer API ?
+
+We use Kafka Streams when we need to do stream partitioning tasks or when we need real-time processing, real-time analytics and machine learning.
 * [ ] What is a `SerDe`?
+A SerDe stands for Serializer/Deserializer,
+Serializer: Convert in-memory objects to byte arrays.
+Deserializer: converts a byte array back to an in-memory object.
+
 * [ ] What is a KStream?
+
+KStream is a data stream model in the Kafka Streams API that represents a stateless data stream. Stateless means that it does not maintain any state itself. It is a data stream that arrives sequentially and each record is processed independently.
 * [ ] What is a KTable? What is a compacted topic ?
+
+
 * [ ] What is a GlobalKTable?
 * [ ] What is a [stateful operation](https://developer.confluent.io/learn-kafka/kafka-streams/stateful-operations/) ?
 

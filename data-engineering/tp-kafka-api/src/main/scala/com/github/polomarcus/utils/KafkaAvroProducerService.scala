@@ -4,6 +4,7 @@ import com.github.polomarcus.conf.ConfService
 import com.github.polomarcus.models.News
 import com.sksamuel.avro4s.{Record, RecordFormat}
 import com.typesafe.scalalogging.Logger
+import io.confluent.kafka.serializers.KafkaAvroSerializer 
 import io.confluent.kafka.serializers.AbstractKafkaSchemaSerDeConfig
 import org.apache.kafka.clients.producer._
 
@@ -19,7 +20,7 @@ object KafkaAvroProducerService {
   props.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, "org.apache.kafka.common.serialization.StringSerializer")
 
   // @TODO We want to serialize the value of a News object here : i.e. do a custom serialization (@see readme)
-  props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, "io.confluent.kafka.serializers.KafkaAvroSerializer")
+  props.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, classOf[KafkaAvroSerializer].getName)
 
   // @TODO this is how we connect to the Schema Registry
   props.put(AbstractKafkaSchemaSerDeConfig.SCHEMA_REGISTRY_URL_CONFIG, ConfService.SCHEMA_REGISTRY)
