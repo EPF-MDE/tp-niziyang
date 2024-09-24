@@ -304,7 +304,12 @@ KStream is a data stream model in the Kafka Streams API that represents a statel
 
 
 * [ ] What is a GlobalKTable?
+
+GlobalKTable is another abstraction in Apache Kafka Streams, similar to KTable, but with a key difference: it is replicated across all instances of the application. This means that each instance has a full copy of the data, allowing for easier access to the latest state for any key, regardless of where the data was produced.
+
 * [ ] What is a [stateful operation](https://developer.confluent.io/learn-kafka/kafka-streams/stateful-operations/) ?
+
+Stateful operation refers to operations in stream processing that maintain some form of state across multiple records.
 
 What are the new [configs](https://kafka.apache.org/documentation/#streamsconfigs) we can use ?
 
@@ -331,12 +336,25 @@ sbt "runMain com.github.polomarcus.main.MainKafkaStream"
 ```
 * [ ] Stop your application once you have processed messages. If you restart your applicaton and resend messages, pay attention to your values inside the KTable. [How is the KTable state saved ?](https://docs.confluent.io/platform/current/streams/architecture.html#fault-tolerance)
 
+The state of KTable is managed through Kafka's changelog topics and RocksDB local storage. Whenever the application is stopped or restarted, Kafka Streams restores the state of KTable from the changelog topic
+
 Lot of examples can be found [here](https://blog.rockthejvm.com/kafka-streams/)
 
 #### Monitoring and Operations
 ##### Questions
 * [ ] Which metrics should we monitor once our application is deployed to the real world ?
 [Datadog's Kafka dashboard overview](https://www.datadoghq.com/dashboards/kafka-dashboard/)
+
+Broker Metrics
+Topic Metrics
+Consumer Metrics
+Producer Metrics
+Schema Registry Metrics
+
+
+
+
+
 
 Have a look to the Kafka UI metrics : http://localhost:8080/ui/clusters/local/brokers/1/metrics
 
