@@ -302,6 +302,10 @@ Deserializer: converts a byte array back to an in-memory object.
 KStream is a data stream model in the Kafka Streams API that represents a stateless data stream. Stateless means that it does not maintain any state itself. It is a data stream that arrives sequentially and each record is processed independently.
 * [ ] What is a KTable? What is a compacted topic ?
 
+a KTable is essentially a changelog that reflects the latest state of a key-value pair.
+
+A compacted topic in Kafka is a type of topic where old records are discarded based on key retention.
+
 
 * [ ] What is a GlobalKTable?
 
